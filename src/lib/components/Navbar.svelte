@@ -5,6 +5,7 @@
     import IconEye from "$lib/icons/IconEye.svelte";
     import IconEyeOff from "$lib/icons/IconEyeOff.svelte";
     import IconTrash from "$lib/icons/IconTrash.svelte";
+    import IconMinimize from "$lib/icons/IconMinimize.svelte";
     import IconX from "$lib/icons/IconX.svelte";
 
     // Props
@@ -33,9 +34,16 @@
     function closeApp() {
         getCurrentWindow().close();
     }
+
+    function minimizeApp() {
+        getCurrentWindow().minimize();
+    }
 </script>
 
-<header data-tauri-drag-region class="navbar">
+<header class="navbar">
+    <!-- Drag Layer covering the whole header background -->
+    <div class="drag-layer" data-tauri-drag-region></div>
+
     <div class="logo">
         <IconLogo size={24} class="brand-icon" />
         <span class="brand-name">Transcriber</span>
@@ -100,6 +108,15 @@
             <IconMic size={18} />
         </button>
 
+        <!-- Minimize App -->
+        <button
+            class="icon-btn minimize-btn"
+            onclick={minimizeApp}
+            title="Minimize"
+        >
+            <IconMinimize size={18} />
+        </button>
+
         <!-- Close App -->
         <button class="icon-btn close-btn" onclick={closeApp} title="Close">
             <IconX size={18} />
@@ -118,6 +135,17 @@
         justify-content: space-between;
         flex-shrink: 0;
         cursor: default;
+        position: relative; /* Needed for absolute positioning of drag layer */
+        overflow: hidden; /* Ensure drag layer doesn't overflow */
+    }
+
+    .drag-layer {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 1;
     }
 
     .logo {
@@ -127,6 +155,13 @@
         color: #fff;
         font-weight: 500;
         font-size: 0.9rem;
+        position: relative;
+        z-index: 10;
+        pointer-events: none; /* Let clicks pass through to drag layer if it's just texts */
+    }
+
+    .logo > * {
+        pointer-events: auto; /* Re-enable clicks on interactive children if any (none currently, but good practice) */
     }
 
     /* .brand-icon is now passed as a class to IconLogo */
@@ -142,7 +177,9 @@
         display: flex;
         align-items: center;
         gap: 8px;
-        -webkit-app-region: no-drag;
+        position: relative;
+        z-index: 10;
+        /* -webkit-app-region: no-drag; Remove this as we handle it with layers now */
     }
 
     button,
@@ -237,5 +274,12 @@
 
     .select-wrapper.compact select:hover {
         background: rgba(255, 255, 255, 0.1);
+        border-color: rgba(255, 255, 255, 0.3);
+    }
+
+    .select-wrapper.compact select option {
+        background-color: #1a1a1a;
+        color: white;
+        padding: 4px;
     }
 </style>

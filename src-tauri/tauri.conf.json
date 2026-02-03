@@ -12,8 +12,8 @@
   "app": {
     "windows": [
       {
-        "title": "tauri-svelte-app",
-        "width": 350,
+        "title": "Transcriber",
+        "width": 600,
         "height": 500,
         "resizable": true,
         "fullscreen": false,
