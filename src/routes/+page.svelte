@@ -223,7 +223,6 @@
         border-radius: 12px;
         overflow: visible; /* Allow settings dropdown to show */
         border: 1px solid rgba(255, 255, 255, 0.08);
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
         transition:
             background-color 0.3s ease,
             border-color 0.3s ease;
@@ -239,7 +238,6 @@
         backdrop-filter: blur(20px) saturate(180%);
         -webkit-backdrop-filter: blur(20px) saturate(180%);
         border: 1px solid rgba(255, 255, 255, 0.1);
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
     }
 
     .settings-dropdown {
