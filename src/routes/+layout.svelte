@@ -1,15 +1,22 @@
 <script lang="ts">
-	import favicon from '$lib/assets/favicon.svg';
-	import { onMount } from 'svelte';
+	import favicon from "$lib/assets/favicon.svg";
+	import { onMount } from "svelte";
 
 	let { children } = $props();
 </script>
 
 <svelte:head>
 	<link rel="icon" href={favicon} />
-	<link rel="preconnect" href="https://fonts.googleapis.com">
-	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
-	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+	<link rel="preconnect" href="https://fonts.googleapis.com" />
+	<link
+		rel="preconnect"
+		href="https://fonts.gstatic.com"
+		crossorigin="anonymous"
+	/>
+	<link
+		href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap"
+		rel="stylesheet"
+	/>
 </svelte:head>
 
 <div class="app-container">
@@ -27,7 +34,7 @@
 		width: 100%;
 		height: 100%;
 		overflow: hidden; /* Prevent body scroll, handle in app */
-		font-family: 'Inter', sans-serif;
+		font-family: "Inter", sans-serif;
 		background: transparent; /* Allow Tauri transparency */
 		color: #ffffff;
 		user-select: none; /* App-like feel */
@@ -43,8 +50,9 @@
 		height: 100%;
 		display: flex;
 		flex-direction: column;
+		background: transparent !important;
 	}
-	
+
 	/* Scrollbar Styling */
 	:global(::-webkit-scrollbar) {
 		width: 6px;

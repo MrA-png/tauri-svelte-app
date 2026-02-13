@@ -146,6 +146,20 @@
         border: 1px solid rgba(255, 255, 255, 0.2);
         color: white;
         border-radius: 6px;
+        appearance: none;
+        cursor: pointer;
+    }
+
+    .device-select:focus {
+        outline: none;
+        border-color: #6366f1;
+        background: rgba(0, 0, 0, 0.5);
+    }
+
+    .device-select option {
+        background-color: #1a1a1a;
+        color: white;
+        padding: 8px;
     }
 
     .visualizer-container {

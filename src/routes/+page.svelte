@@ -1,8 +1,8 @@
 <script lang="ts">
     import { onMount, onDestroy } from "svelte";
-    import { getCurrentWindow } from "@tauri-apps/api/window";
+    import { getCurrentWindow, Window } from "@tauri-apps/api/window";
+    import { emit } from "@tauri-apps/api/event";
     import Navbar from "$lib/components/Navbar.svelte";
-    import TranscriptDisplay from "$lib/components/TranscriptDisplay.svelte";
     import AudioSettings from "$lib/components/AudioSettings.svelte";
 
     // State
@@ -49,6 +49,9 @@
                 }
                 transcriptText += final;
                 interimText = interim;
+
+                // Sync with transcript window
+                emitTranscriptUpdate();
             };
 
             recognition.onerror = (event: any) => {
@@ -60,6 +63,7 @@
                         "Microphone access denied. Please check your settings.",
                     );
                     isRecording = false;
+                    emitTranscriptUpdate();
                 }
             };
 
@@ -88,7 +92,6 @@
 
     onDestroy(() => {
         if (recognition) recognition.stop();
-        // stopVisualizer checked in AudioSettings logic or self-contained there
     });
 
     async function loadAudioDevices() {
@@ -111,17 +114,41 @@
         noSpeechTimeout = setTimeout(() => {
             if (isRecording && !transcriptText && !interimText) {
                 showNoSpeechWarning = true;
+                emitTranscriptUpdate();
             }
         }, 8000); // 8 seconds without speech
     }
 
-    function toggleRecording() {
+    function emitTranscriptUpdate() {
+        emit("transcript-update", {
+            transcriptText,
+            interimText,
+            isRecording,
+            showNoSpeechWarning,
+        });
+    }
+
+    async function toggleRecording() {
         if (isRecording) {
             recognition.stop();
             isRecording = false;
             clearTimeout(noSpeechTimeout);
             showNoSpeechWarning = false;
         } else {
+            try {
+                // Check / Open Transcript Window
+                const transcriptWin = await Window.getByLabel("transcript");
+                if (transcriptWin) {
+                    console.log("Showing transcript window");
+                    await transcriptWin.show();
+                    await transcriptWin.setFocus();
+                } else {
+                    console.error("Transcript window not found");
+                }
+            } catch (err) {
+                console.error("Error accessing transcript window:", err);
+            }
+
             // Update language before starting
             recognition.lang = language;
             recognition.start();
@@ -129,6 +156,7 @@
             showNoSpeechWarning = false;
             startNoSpeechTimer();
         }
+        emitTranscriptUpdate();
     }
 
     function changeLanguage(newLang: string) {
@@ -149,72 +177,80 @@
     function clearText() {
         transcriptText = "";
         interimText = "";
+        emitTranscriptUpdate();
     }
 </script>
 
-<!-- Main Application Layer -->
+<!-- Main Application Layer (Navbar Only) -->
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="app-layout" class:transparent-mode={isTransparent}>
-    <!-- Navbar -->
-    <Navbar
-        {isRecording}
-        {isTransparent}
-        {language}
-        {showSettings}
-        onToggleRecording={toggleRecording}
-        onToggleTransparency={toggleTransparency}
-        onClearText={clearText}
-        onToggleSettings={toggleSettings}
-        onChangeLanguage={changeLanguage}
-    />
-
-    <!-- Main Content Area -->
-    <main class="content">
-        <TranscriptDisplay
-            {transcriptText}
-            {interimText}
+<div class="main-container" class:transparent-mode={isTransparent}>
+    <!-- Navbar Panel -->
+    <div class="floating-panel navbar-panel">
+        <Navbar
             {isRecording}
-            {showNoSpeechWarning}
+            {isTransparent}
+            {language}
             {showSettings}
-        >
-            <!-- Slot content correctly passed as snippet prop if using default slot or similar mechanism (Svelte 5 snippet) -->
-            <!-- However, in the TranscriptDisplay component, I used {@render topElement?.()} which expects a snippet prop named topElement -->
-            <!-- Let's pass the snippet properly -->
-            {#snippet topElement()}
+            onToggleRecording={toggleRecording}
+            onToggleTransparency={toggleTransparency}
+            onClearText={clearText}
+            onToggleSettings={toggleSettings}
+            onChangeLanguage={changeLanguage}
+        />
+        {#if showSettings}
+            <div class="settings-dropdown">
                 <AudioSettings {availableDevices} bind:selectedDeviceId />
-            {/snippet}
-        </TranscriptDisplay>
-    </main>
+            </div>
+        {/if}
+    </div>
 </div>
 
 <style>
     /* --- Main Layout --- */
-    .app-layout {
+    .main-container {
         display: flex;
         flex-direction: column;
         height: 100vh;
-        background-color: #121212; /* Fallback solid color */
-        color: #e0e0e0;
-        transition: background-color 0.3s ease;
-        overflow: hidden;
-        border-radius: 8px; /* Slight rounding if OS supports it */
+        background-color: transparent !important; /* Forces transparency */
+        padding: 5px; /* Minimal padding */
+        box-sizing: border-box;
+        overflow: hidden; /* Hide anything outside */
     }
 
-    .transparent-mode {
-        /* Glassmorphism */
-        background-color: rgba(20, 20, 20, 0.45);
-        backdrop-filter: blur(16px) saturate(180%);
-        -webkit-backdrop-filter: blur(16px) saturate(180%);
+    .floating-panel {
+        background-color: #121212;
+        border-radius: 12px;
+        overflow: visible; /* Allow settings dropdown to show */
         border: 1px solid rgba(255, 255, 255, 0.08);
+        transition:
+            background-color 0.3s ease,
+            border-color 0.3s ease;
+        position: relative;
     }
 
-    /* --- Content --- */
-    .content {
-        flex: 1;
-        position: relative;
-        overflow: hidden;
-        display: flex;
-        flex-direction: column;
+    .navbar-panel {
+        flex-shrink: 0;
+    }
+
+    .transparent-mode .floating-panel {
+        background-color: rgba(20, 20, 20, 0.65);
+        backdrop-filter: blur(20px) saturate(180%);
+        -webkit-backdrop-filter: blur(20px) saturate(180%);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .settings-dropdown {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        margin-top: 8px;
+        background-color: #1a1a1a;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 8px;
+        padding: 8px;
+        z-index: 100;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
     }
 </style>
