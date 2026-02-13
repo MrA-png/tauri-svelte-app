@@ -35,7 +35,7 @@
     }
 </script>
 
-<header data-tauri-drag-region class="navbar">
+<header data-tauri-dNrag-region class="navbar">
     <div class="logo">
         <IconLogo size={24} class="brand-icon" />
         <span class="brand-name">Transcriber</span>
