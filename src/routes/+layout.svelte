@@ -41,7 +41,6 @@
 	}
 
 	:global(body) {
-		/* Default background (can be overridden by transparency toggle) */
 		background-color: transparent;
 	}
 

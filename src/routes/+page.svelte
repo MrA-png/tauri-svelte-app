@@ -1,9 +1,13 @@
 <script lang="ts">
     import { onMount, onDestroy } from "svelte";
-    import { getCurrentWindow, Window } from "@tauri-apps/api/window";
+    import { getCurrentWindow, getAllWindows } from "@tauri-apps/api/window";
+    import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
+    import { LogicalSize } from "@tauri-apps/api/dpi";
     import { emit } from "@tauri-apps/api/event";
     import Navbar from "$lib/components/Navbar.svelte";
     import AudioSettings from "$lib/components/AudioSettings.svelte";
+
+    import TranscriptDisplay from "$lib/components/TranscriptDisplay.svelte";
 
     // State
     let isTransparent = $state(false);
@@ -18,6 +22,7 @@
     let selectedDeviceId: string = $state("default");
 
     let showSettings = $state(false);
+    let showTranscript = $state(false);
     let noSpeechTimeout: number | undefined;
     let showNoSpeechWarning = $state(false);
 
@@ -64,6 +69,7 @@
                     );
                     isRecording = false;
                     emitTranscriptUpdate();
+                    adjustWindowSize(); // Ensure size is correct if stopped
                 }
             };
 
@@ -78,6 +84,8 @@
                             startNoSpeechTimer();
                         }
                     }, 500);
+                } else {
+                    adjustWindowSize();
                 }
             };
         } else {
@@ -105,8 +113,34 @@
         }
     }
 
-    function toggleSettings() {
+    // Safe wrapper for Tauri window access
+    function getTauriWindow() {
+        try {
+            return getCurrentWindow();
+        } catch (e) {
+            console.warn("Tauri window access failed", e);
+            return null;
+        }
+    }
+
+    async function adjustWindowSize() {
+        const win = getTauriWindow();
+        if (!win) return;
+
+        try {
+            if (showSettings) {
+                await win.setSize(new LogicalSize(500, 500));
+            } else {
+                await win.setSize(new LogicalSize(500, 130));
+            }
+        } catch (e) {
+            console.error("Failed to resize window", e);
+        }
+    }
+
+    async function toggleSettings() {
         showSettings = !showSettings;
+        adjustWindowSize();
     }
 
     function startNoSpeechTimer() {
@@ -120,34 +154,59 @@
     }
 
     function emitTranscriptUpdate() {
-        emit("transcript-update", {
-            transcriptText,
-            interimText,
-            isRecording,
-            showNoSpeechWarning,
-        });
+        try {
+            emit("transcript-update", {
+                transcriptText,
+                interimText,
+                isRecording,
+                showNoSpeechWarning,
+            }).catch((e) => console.error("Emit failed", e));
+        } catch (e) {
+            console.warn("Tauri emit failed", e);
+        }
     }
 
     async function toggleRecording() {
-        if (isRecording) {
-            recognition.stop();
-            isRecording = false;
-            clearTimeout(noSpeechTimeout);
-            showNoSpeechWarning = false;
-        } else {
-            try {
-                // Check / Open Transcript Window
-                const transcriptWin = await Window.getByLabel("transcript");
-                if (transcriptWin) {
-                    console.log("Showing transcript window");
-                    await transcriptWin.show();
-                    await transcriptWin.setFocus();
-                } else {
-                    console.error("Transcript window not found");
-                }
-            } catch (err) {
-                console.error("Error accessing transcript window:", err);
+        if (isRecording || showTranscript) {
+            // Stop logic
+            if (isRecording) {
+                recognition.stop();
+                isRecording = false;
+                clearTimeout(noSpeechTimeout);
+                showNoSpeechWarning = false;
             }
+
+            // Also close/hide transcript window
+            try {
+                const transcriptWin =
+                    await WebviewWindow.getByLabel("transcript");
+                if (transcriptWin) {
+                    await transcriptWin.hide();
+                }
+            } catch (e) {
+                console.error("Failed to hide transcript window", e);
+            }
+            showTranscript = false;
+
+            // Window resize handled in onend or explicit call
+            await adjustWindowSize();
+        } else {
+            // Start logic
+            try {
+                const transcriptWin =
+                    await WebviewWindow.getByLabel("transcript");
+                if (transcriptWin) {
+                    await transcriptWin.show();
+                    // We don't necessarily need to focus it, maybe keep focus on controls?
+                    // But user likely wants to see it.
+                    // await transcriptWin.setFocus();
+                } else {
+                    console.warn("Transcript window not found by label");
+                }
+            } catch (e) {
+                console.error("Failed to show transcript window", e);
+            }
+            showTranscript = true;
 
             // Update language before starting
             recognition.lang = language;
@@ -163,7 +222,6 @@
         language = newLang;
         if (isRecording) {
             recognition.stop();
-            // Will restart automatically in onend, but we should make sure we update lang
             recognition.lang = newLang;
         } else {
             recognition.lang = newLang;
@@ -174,10 +232,11 @@
         isTransparent = !isTransparent;
     }
 
-    function clearText() {
+    async function clearText() {
         transcriptText = "";
         interimText = "";
         emitTranscriptUpdate();
+        await adjustWindowSize();
     }
 </script>
 
@@ -192,6 +251,7 @@
             {isTransparent}
             {language}
             {showSettings}
+            {showTranscript}
             onToggleRecording={toggleRecording}
             onToggleTransparency={toggleTransparency}
             onClearText={clearText}
@@ -251,6 +311,5 @@
         border-radius: 8px;
         padding: 8px;
         z-index: 100;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
     }
 </style>

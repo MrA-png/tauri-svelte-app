@@ -3,12 +3,15 @@
     import { listen } from "@tauri-apps/api/event";
     import { getCurrentWindow } from "@tauri-apps/api/window";
     import TranscriptDisplay from "$lib/components/TranscriptDisplay.svelte";
+    import IconEye from "$lib/icons/IconEye.svelte";
+    import IconEyeOff from "$lib/icons/IconEyeOff.svelte";
 
     let transcriptText = $state("");
     let interimText = $state("");
     let isRecording = $state(false);
     let showNoSpeechWarning = $state(false);
     let showSettings = $state(false);
+    let isTransparent = $state(false);
 
     onMount(async () => {
         // Listen for updates from main window
@@ -32,12 +35,29 @@
     function minimizeWindow() {
         getCurrentWindow().minimize();
     }
+
+    function toggleTransparency() {
+        isTransparent = !isTransparent;
+    }
 </script>
 
-<div class="transcript-window">
+<div class="transcript-window" class:transparent-mode={isTransparent}>
+    <!-- Enhanced drag region -->
     <div class="window-header" data-tauri-drag-region>
-        <div class="drag-handle"></div>
+        <div class="drag-handle" data-tauri-drag-region></div>
         <div class="window-controls">
+            <button
+                class="control-btn"
+                class:active={isTransparent}
+                onclick={toggleTransparency}
+                title="Toggle Transparency"
+            >
+                {#if isTransparent}
+                    <IconEye size={14} />
+                {:else}
+                    <IconEyeOff size={14} />
+                {/if}
+            </button>
             <button
                 class="control-btn minimize"
                 onclick={minimizeWindow}
@@ -78,18 +98,32 @@
         display: flex;
         flex-direction: column;
         height: 100vh;
-        background-color: rgba(
-            20,
-            20,
-            20,
-            0.85
-        ); /* Slightly less transparent for readability */
-        backdrop-filter: blur(20px);
+        background-color: rgba(20, 20, 20, 0.95);
         border-radius: 12px;
         overflow: hidden;
         border: 1px solid rgba(255, 255, 255, 0.1);
         box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
         margin: 10px; /* Gap for shadow */
+        transition: background-color 0.3s ease;
+    }
+
+    /* Transparent Mode */
+    .transcript-window.transparent-mode {
+        background-color: rgba(0, 0, 0, 0.4); /* Much more transparent */
+        backdrop-filter: blur(
+            4px
+        ); /* Reduce blur for clearer view of background */
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        box-shadow: none;
+    }
+
+    .transcript-window.transparent-mode .window-header {
+        background: rgba(255, 255, 255, 0.02);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+    }
+
+    .transcript-window.transparent-mode .content {
+        text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8); /* readable text */
     }
 
     .window-header {
@@ -101,6 +135,7 @@
         padding: 0 8px;
         border-bottom: 1px solid rgba(255, 255, 255, 0.05);
         position: relative;
+        cursor: move; /* Indicate draggable */
     }
 
     .drag-handle {
@@ -135,6 +170,10 @@
     .control-btn:hover {
         background: rgba(255, 255, 255, 0.1);
         color: white;
+    }
+    .control-btn.active {
+        color: #6366f1;
+        background: rgba(99, 102, 241, 0.1);
     }
     .control-btn.close:hover {
         background: #ef4444;
