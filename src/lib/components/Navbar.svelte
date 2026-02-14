@@ -7,6 +7,8 @@
     import IconTrash from "$lib/icons/IconTrash.svelte";
     import IconMinimize from "$lib/icons/IconMinimize.svelte";
     import IconX from "$lib/icons/IconX.svelte";
+    import IconSettings from "$lib/icons/IconSettings.svelte";
+    import IconTranscript from "$lib/icons/IconTranscript.svelte";
 
     // Props
     let {
@@ -19,11 +21,13 @@
         onClearText,
         onToggleSettings,
         onChangeLanguage,
+        showTranscript,
     } = $props<{
         isRecording: boolean;
         isTransparent: boolean;
         language: string;
         showSettings: boolean;
+        showTranscript: boolean;
         onToggleRecording: () => void;
         onToggleTransparency: () => void;
         onClearText: () => void;
@@ -64,11 +68,18 @@
         <button
             class="icon-btn record-btn-compact"
             class:recording={isRecording}
+            class:active={showTranscript}
             onclick={onToggleRecording}
-            title={isRecording ? "Stop Recording" : "Start Recording"}
+            title={isRecording
+                ? "Stop Recording & Close"
+                : showTranscript
+                  ? "Close Transcript"
+                  : "Start Recording & Show"}
         >
             {#if isRecording}
                 <div class="stop-icon"></div>
+            {:else if showTranscript}
+                <IconTranscript size={18} />
             {:else}
                 <IconMic size={18} />
             {/if}
@@ -102,7 +113,7 @@
             title="Audio Settings"
             class:active={showSettings}
         >
-            <IconMic size={18} />
+            <IconSettings size={18} />
         </button>
 
         <!-- Minimize App -->
