@@ -44,10 +44,7 @@
     }
 </script>
 
-<header class="navbar">
-    <!-- Drag Layer covering the whole header background -->
-    <div class="drag-layer" data-tauri-drag-region></div>
-
+<header data-tauri-dNrag-region class="navbar">
     <div class="logo">
         <IconLogo size={24} class="brand-icon" />
         <span class="brand-name">Transcriber</span>
