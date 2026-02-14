@@ -44,7 +44,8 @@
     }
 </script>
 
-<header data-tauri-dNrag-region class="navbar">
+<header class="navbar">
+    <div class="drag-layer" data-tauri-drag-region></div>
     <div class="logo">
         <IconLogo size={24} class="brand-icon" />
         <span class="brand-name">Transcriber</span>
@@ -142,7 +143,7 @@
         border-bottom: 1px solid rgba(255, 255, 255, 0.08);
         justify-content: space-between;
         flex-shrink: 0;
-        cursor: default;
+        cursor: move;
         position: relative; /* Needed for absolute positioning of drag layer */
         overflow: hidden; /* Ensure drag layer doesn't overflow */
     }
