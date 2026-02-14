@@ -3,7 +3,7 @@
     import { getCurrentWindow, getAllWindows } from "@tauri-apps/api/window";
     import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
     import { LogicalSize } from "@tauri-apps/api/dpi";
-    import { emit } from "@tauri-apps/api/event";
+    import { emit, listen } from "@tauri-apps/api/event";
     import Navbar from "$lib/components/Navbar.svelte";
     import AudioSettings from "$lib/components/AudioSettings.svelte";
 
@@ -96,6 +96,12 @@
     onMount(async () => {
         setupRecognition();
         await loadAudioDevices();
+        // Listen for recording toggle from transcript window
+        await listen("toggle-recording", toggleRecordingState);
+        // Listen for transcript window hide event
+        await listen("transcript-hidden", () => {
+            showTranscript = false;
+        });
     });
 
     onDestroy(() => {
@@ -166,56 +172,88 @@
         }
     }
 
-    async function toggleRecording() {
-        if (isRecording || showTranscript) {
+    async function toggleRecordingState() {
+        if (isRecording) {
             // Stop logic
-            if (isRecording) {
+            try {
                 recognition.stop();
-                isRecording = false;
-                clearTimeout(noSpeechTimeout);
-                showNoSpeechWarning = false;
+            } catch (e) {
+                console.warn("Error stopping recognition:", e);
+            }
+            isRecording = false;
+            clearTimeout(noSpeechTimeout);
+            showNoSpeechWarning = false;
+        } else {
+            // Start logic
+            // Ensure window is shown
+            if (!showTranscript) {
+                try {
+                    const transcriptWin =
+                        await WebviewWindow.getByLabel("transcript");
+                    if (transcriptWin) {
+                        await transcriptWin.show();
+                        showTranscript = true;
+                    }
+                } catch (e) {
+                    console.error("Failed to show transcript window", e);
+                }
             }
 
-            // Also close/hide transcript window
+            recognition.lang = language;
+            try {
+                recognition.start();
+                isRecording = true;
+                showNoSpeechWarning = false;
+                startNoSpeechTimer();
+            } catch (e: any) {
+                console.error("Failed to start recognition:", e);
+                // If it's already started (InvalidStateError), we can assume it's recording
+                if (
+                    e.name === "InvalidStateError" ||
+                    e.message?.includes("already started")
+                ) {
+                    isRecording = true;
+                    showNoSpeechWarning = false;
+                    startNoSpeechTimer();
+                    console.log(
+                        "Recognition was already active, synced state.",
+                    );
+                } else {
+                    isRecording = false;
+                }
+            }
+        }
+        await adjustWindowSize();
+        emitTranscriptUpdate();
+    }
+
+    async function handleNavbarToggle() {
+        if (showTranscript) {
+            // Hide transcript window
             try {
                 const transcriptWin =
                     await WebviewWindow.getByLabel("transcript");
                 if (transcriptWin) {
                     await transcriptWin.hide();
                 }
+                showTranscript = false;
             } catch (e) {
                 console.error("Failed to hide transcript window", e);
             }
-            showTranscript = false;
-
-            // Window resize handled in onend or explicit call
-            await adjustWindowSize();
         } else {
-            // Start logic
+            // Show transcript window
             try {
                 const transcriptWin =
                     await WebviewWindow.getByLabel("transcript");
                 if (transcriptWin) {
                     await transcriptWin.show();
-                    // We don't necessarily need to focus it, maybe keep focus on controls?
-                    // But user likely wants to see it.
-                    // await transcriptWin.setFocus();
-                } else {
-                    console.warn("Transcript window not found by label");
+                    showTranscript = true;
                 }
             } catch (e) {
                 console.error("Failed to show transcript window", e);
             }
-            showTranscript = true;
-
-            // Update language before starting
-            recognition.lang = language;
-            recognition.start();
-            isRecording = true;
-            showNoSpeechWarning = false;
-            startNoSpeechTimer();
         }
-        emitTranscriptUpdate();
+        await adjustWindowSize();
     }
 
     function changeLanguage(newLang: string) {
@@ -252,7 +290,7 @@
             {language}
             {showSettings}
             {showTranscript}
-            onToggleRecording={toggleRecording}
+            onToggleTranscript={handleNavbarToggle}
             onToggleTransparency={toggleTransparency}
             onClearText={clearText}
             onToggleSettings={toggleSettings}

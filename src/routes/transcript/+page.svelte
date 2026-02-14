@@ -1,6 +1,6 @@
 <script lang="ts">
     import { onMount } from "svelte";
-    import { listen } from "@tauri-apps/api/event";
+    import { listen, emit } from "@tauri-apps/api/event";
     import { getCurrentWindow } from "@tauri-apps/api/window";
     import TranscriptDisplay from "$lib/components/TranscriptDisplay.svelte";
     import IconEye from "$lib/icons/IconEye.svelte";
@@ -13,6 +13,10 @@
     let showSettings = $state(false);
     let isTransparent = $state(false);
 
+    function handleToggleRecording() {
+        emit("toggle-recording");
+    }
+
     onMount(async () => {
         // Listen for updates from main window
         await listen("transcript-update", (event: any) => {
@@ -23,12 +27,12 @@
             showNoSpeechWarning = payload.showNoSpeechWarning;
         });
 
-        // Show window when ready
-        getCurrentWindow().show();
+        // Window visibility is managed by the main window
     });
 
     function closeWindow() {
         // Just hide instead of closing to keep state/listeners active
+        emit("transcript-hidden");
         getCurrentWindow().hide();
     }
 
@@ -46,6 +50,19 @@
     <div class="window-header" data-tauri-drag-region>
         <div class="drag-handle" data-tauri-drag-region></div>
         <div class="window-controls">
+            <button
+                type="button"
+                class="control-btn record-btn"
+                class:recording={isRecording}
+                onclick={handleToggleRecording}
+                title={isRecording ? "Stop Recording" : "Start Recording"}
+            >
+                {#if isRecording}
+                    <div class="stop-icon"></div>
+                {:else}
+                    <span class="start-label">Start</span>
+                {/if}
+            </button>
             <button
                 class="control-btn"
                 class:active={isTransparent}
@@ -155,8 +172,9 @@
     }
 
     .control-btn {
-        width: 24px;
+        min-width: 24px;
         height: 24px;
+        padding: 0 4px;
         border-radius: 4px;
         border: none;
         background: transparent;
@@ -175,6 +193,43 @@
         color: #6366f1;
         background: rgba(99, 102, 241, 0.1);
     }
+
+    .control-btn.record-btn:hover {
+        background: rgba(239, 68, 68, 0.1);
+        color: #ef4444;
+    }
+    .control-btn.recording {
+        color: #ef4444;
+        background: rgba(239, 68, 68, 0.2);
+        animation: pulse-recording 2s infinite;
+    }
+
+    .stop-icon {
+        width: 8px;
+        height: 8px;
+        background: currentColor;
+        border-radius: 1px;
+    }
+
+    .start-label {
+        font-size: 10px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    @keyframes pulse-recording {
+        0% {
+            opacity: 1;
+        }
+        50% {
+            opacity: 0.5;
+        }
+        100% {
+            opacity: 1;
+        }
+    }
+
     .control-btn.close:hover {
         background: #ef4444;
     }
