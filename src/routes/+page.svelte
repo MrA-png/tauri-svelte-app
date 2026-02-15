@@ -96,12 +96,20 @@
     onMount(async () => {
         setupRecognition();
         await loadAudioDevices();
-        // Listen for recording toggle from transcript window
-        await listen("toggle-recording", toggleRecordingState);
-        // Listen for transcript window hide event
-        await listen("transcript-hidden", () => {
-            showTranscript = false;
-        });
+
+        try {
+            // Listen for recording toggle from transcript window
+            await listen("toggle-recording", () => toggleRecordingState());
+            // Listen for transcript window hide event
+            await listen("transcript-hidden", () => {
+                showTranscript = false;
+            });
+        } catch (e) {
+            console.warn(
+                "Tauri event listeners setup failed (non-Tauri environment?):",
+                e,
+            );
+        }
     });
 
     onDestroy(() => {
@@ -161,11 +169,22 @@
 
     function emitTranscriptUpdate() {
         try {
+            // Calculate boost gain for visual sync
+            const selectedDevice = availableDevices.find(
+                (d) => d.deviceId === selectedDeviceId,
+            );
+            const isBlackHole = selectedDevice?.label
+                ?.toLowerCase()
+                .includes("blackhole");
+            const boostGain = isBlackHole ? 4.0 : 1.0;
+
             emit("transcript-update", {
                 transcriptText,
                 interimText,
                 isRecording,
                 showNoSpeechWarning,
+                selectedDeviceId,
+                boostGain,
             }).catch((e) => console.error("Emit failed", e));
         } catch (e) {
             console.warn("Tauri emit failed", e);
@@ -228,30 +247,26 @@
     }
 
     async function handleNavbarToggle() {
-        if (showTranscript) {
-            // Hide transcript window
-            try {
-                const transcriptWin =
-                    await WebviewWindow.getByLabel("transcript");
-                if (transcriptWin) {
-                    await transcriptWin.hide();
-                }
+        try {
+            // Use getAllWindows to avoid potential static method binding issues with getByLabel
+            const windows = await getAllWindows();
+            const transcriptWin = windows.find((w) => w.label === "transcript");
+
+            if (!transcriptWin) {
+                console.warn("Transcript window not found.");
                 showTranscript = false;
-            } catch (e) {
-                console.error("Failed to hide transcript window", e);
+                return;
             }
-        } else {
-            // Show transcript window
-            try {
-                const transcriptWin =
-                    await WebviewWindow.getByLabel("transcript");
-                if (transcriptWin) {
-                    await transcriptWin.show();
-                    showTranscript = true;
-                }
-            } catch (e) {
-                console.error("Failed to show transcript window", e);
+
+            if (showTranscript) {
+                await transcriptWin.hide();
+                showTranscript = false;
+            } else {
+                await transcriptWin.show();
+                showTranscript = true;
             }
+        } catch (e) {
+            console.error("Failed to toggle transcript window", e);
         }
         await adjustWindowSize();
     }

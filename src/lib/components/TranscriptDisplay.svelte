@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onMount, onDestroy } from "svelte";
+    import AudioVisualizer from "$lib/components/AudioVisualizer.svelte";
 
     let {
         isRecording,
@@ -8,13 +8,17 @@
         showNoSpeechWarning,
         showSettings,
         topElement,
+        deviceId = "default",
+        boostGain = 1.0,
     } = $props<{
         isRecording: boolean;
         transcriptText: string;
         interimText: string;
         showNoSpeechWarning: boolean;
         showSettings: boolean;
-        topElement?: any; // To allow injecting settings panel
+        topElement?: any;
+        deviceId?: string;
+        boostGain?: number;
     }>();
 
     let scrollContainer = $state() as HTMLDivElement;
@@ -39,7 +43,13 @@
         <div class="placeholder">
             {#if isRecording}
                 <div class="listening-loader">
-                    <span class="pulse-dot"></span>
+                    <AudioVisualizer
+                        {deviceId}
+                        {boostGain}
+                        width={200}
+                        height={60}
+                        barColor={[99, 102, 241]}
+                    />
                     <p>Listening...</p>
                     {#if showNoSpeechWarning}
                         <p class="warning-text">
@@ -96,29 +106,6 @@
         align-items: center;
         gap: 12px;
         color: #6366f1;
-    }
-
-    .pulse-dot {
-        width: 12px;
-        height: 12px;
-        background-color: #6366f1;
-        border-radius: 50%;
-        animation: pulse-dot 1.5s infinite ease-in-out;
-    }
-
-    @keyframes pulse-dot {
-        0% {
-            transform: scale(0.8);
-            opacity: 0.5;
-        }
-        50% {
-            transform: scale(1.5);
-            opacity: 1;
-        }
-        100% {
-            transform: scale(0.8);
-            opacity: 0.5;
-        }
     }
 
     .warning-text {

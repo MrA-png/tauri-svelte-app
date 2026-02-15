@@ -1,108 +1,58 @@
 <script lang="ts">
     import { onMount, onDestroy } from "svelte";
 
+    import AudioVisualizer from "$lib/components/AudioVisualizer.svelte";
+
     let { availableDevices, selectedDeviceId = $bindable() } = $props<{
         availableDevices: MediaDeviceInfo[];
         selectedDeviceId: string;
     }>();
 
-    let canvas = $state() as HTMLCanvasElement;
-    let audioContext: AudioContext;
-    let analyser: AnalyserNode;
-    let dataArray: Uint8Array;
-    let audioStream: MediaStream;
-    let animationId: number;
+    let isWindows = $state(false);
+    let isMac = $state(false);
 
-    async function startVisualizer(deviceId: string) {
-        try {
-            if (audioStream) stopVisualizer();
-
-            audioStream = await navigator.mediaDevices.getUserMedia({
-                audio: {
-                    deviceId:
-                        deviceId !== "default"
-                            ? { exact: deviceId }
-                            : undefined,
-                },
-            });
-
-            audioContext = new AudioContext();
-            const source = audioContext.createMediaStreamSource(audioStream);
-            analyser = audioContext.createAnalyser();
-            analyser.fftSize = 256;
-            source.connect(analyser);
-
-            const bufferLength = analyser.frequencyBinCount;
-            dataArray = new Uint8Array(bufferLength);
-
-            drawVisualizer();
-        } catch (e) {
-            console.error("Visualizer init error", e);
-        }
-    }
-
-    function stopVisualizer() {
-        if (animationId) cancelAnimationFrame(animationId);
-        if (audioStream) {
-            audioStream.getTracks().forEach((track) => track.stop());
-        }
-        if (audioContext) audioContext.close();
-    }
-
-    function drawVisualizer() {
-        if (!canvas) return;
-        animationId = requestAnimationFrame(drawVisualizer);
-
-        analyser.getByteFrequencyData(dataArray as any);
-
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return;
-
-        const width = canvas.width;
-        const height = canvas.height;
-
-        ctx.clearRect(0, 0, width, height);
-
-        const barWidth = (width / dataArray.length) * 2.5;
-        let x = 0;
-
-        for (let i = 0; i < dataArray.length; i++) {
-            const barHeight = dataArray[i] / 2;
-            ctx.fillStyle = `rgb(${barHeight + 100}, 100, 255)`; // bluish
-            ctx.fillRect(x, height - barHeight, barWidth, barHeight);
-            x += barWidth + 1;
-        }
-    }
-
-    // Effect to restart visualizer when device changes
-    $effect(() => {
-        if (selectedDeviceId) {
-            startVisualizer(selectedDeviceId);
-        }
-        return () => stopVisualizer();
-    });
+    // Derived state for visualizer configuration
+    let selectedDeviceLabel = $derived(
+        availableDevices.find(
+            (d: MediaDeviceInfo) => d.deviceId === selectedDeviceId,
+        )?.label || "",
+    );
+    let isBlackHole = $derived(
+        selectedDeviceLabel.toLowerCase().includes("blackhole"),
+    );
+    let boostGain = $derived(isBlackHole ? 4.0 : 1.0);
 
     onMount(() => {
-        startVisualizer(selectedDeviceId);
-    });
-
-    onDestroy(() => {
-        stopVisualizer();
+        const platform = navigator.userAgent;
+        isWindows = platform.indexOf("Windows") !== -1;
+        isMac = platform.indexOf("Mac") !== -1;
     });
 </script>
 
 <div class="settings-panel">
     <h3>Input Settings</h3>
     <p class="hint">
-        <strong>Important:</strong> To transcribe YouTube/System Audio:
-        <br />1. Enable "Stereo Mix" in Windows Sound Settings.
-        <br />2. Set "Stereo Mix" as the
-        <strong>Default Recording Device</strong>
-        in Windows.
-        <br />3. This app's visualizer below will move when it hears audio.
+        <strong>Setup for System Audio:</strong>
+        {#if isWindows}
+            <br />1. Open <strong>Sound Settings</strong> >
+            <strong>Record</strong>.
+            <br />2. Right-click & enable <strong>"Stereo Mix"</strong>.
+            <br />3. Select "Stereo Mix" below.
+        {:else if isMac}
+            <br />Mac does not have "Stereo Mix" by default.
+            <br />1. Install <strong>BlackHole 2ch</strong>:
+            <br /><code class="code-snippet">brew install blackhole-2ch</code>
+            <br />2. Open <strong>Audio MIDI Setup</strong> app.
+            <br />3. Create a <strong>Multi-Output Device</strong> (select your
+            speakers + BlackHole).
+            <br />4. Select "BlackHole 2ch" below as input.
+        {:else}
+            <br />Detecting OS... ({navigator.userAgent})
+            <br />Ensure system audio is routed to the selected input device.
+        {/if}
     </p>
     <select bind:value={selectedDeviceId} class="device-select">
-        <option value="default">Default System Input</option>
+        <option value="default">Default System Input (Mic)</option>
         {#each availableDevices as device}
             <option value={device.deviceId}
                 >{device.label ||
@@ -110,8 +60,14 @@
             >
         {/each}
     </select>
-    <div class="visualizer-container">
-        <canvas bind:this={canvas} width="300" height="50"></canvas>
+
+    <div class="visualizer-wrapper">
+        <AudioVisualizer
+            deviceId={selectedDeviceId}
+            {boostGain}
+            width={300}
+            height={50}
+        />
     </div>
 </div>
 
@@ -138,6 +94,18 @@
         line-height: 1.4;
     }
 
+    .code-snippet {
+        background: rgba(0, 0, 0, 0.4);
+        padding: 4px 6px;
+        border-radius: 4px;
+        color: #a5b4fc;
+        font-family: monospace;
+        font-size: 0.9em;
+        user-select: text; /* Allow user to copy */
+        display: inline-block;
+        margin: 4px 0;
+    }
+
     .device-select {
         width: 100%;
         margin-bottom: 15px;
@@ -160,13 +128,5 @@
         background-color: #1a1a1a;
         color: white;
         padding: 8px;
-    }
-
-    .visualizer-container {
-        width: 100%;
-        background: rgba(0, 0, 0, 0.3);
-        border-radius: 6px;
-        overflow: hidden;
-        height: 50px;
     }
 </style>

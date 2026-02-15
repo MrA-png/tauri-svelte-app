@@ -13,6 +13,10 @@
     let showSettings = $state(false);
     let isTransparent = $state(false);
 
+    // Visualizer state
+    let selectedDeviceId = $state("default");
+    let boostGain = $state(1.0);
+
     function handleToggleRecording() {
         emit("toggle-recording");
     }
@@ -25,6 +29,11 @@
             interimText = payload.interimText;
             isRecording = payload.isRecording;
             showNoSpeechWarning = payload.showNoSpeechWarning;
+
+            // Update visualizer settings
+            if (payload.selectedDeviceId)
+                selectedDeviceId = payload.selectedDeviceId;
+            if (payload.boostGain) boostGain = payload.boostGain;
         });
 
         // Window visibility is managed by the main window
@@ -99,6 +108,8 @@
             {isRecording}
             {showNoSpeechWarning}
             {showSettings}
+            deviceId={selectedDeviceId}
+            {boostGain}
         />
     </main>
 </div>
