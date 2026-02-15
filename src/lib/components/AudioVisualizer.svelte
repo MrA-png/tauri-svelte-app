@@ -7,12 +7,14 @@
         width = 300,
         height = 50,
         barColor = [100, 100, 255], // RGBBase
+        onAudioDetected,
     } = $props<{
         deviceId: string;
         boostGain?: number;
         width?: number;
         height?: number;
         barColor?: [number, number, number];
+        onAudioDetected?: () => void;
     }>();
 
     let canvas = $state() as HTMLCanvasElement;
@@ -79,6 +81,17 @@
         animationId = requestAnimationFrame(drawVisualizer);
 
         analyser.getByteFrequencyData(dataArray as any);
+
+        // Check for audio activity
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+            sum += dataArray[i];
+        }
+        const average = sum / dataArray.length;
+        if (average > 10 && onAudioDetected) {
+            // Threshold slightly above noise floor
+            onAudioDetected();
+        }
 
         const ctx = canvas.getContext("2d");
         if (!ctx) return;

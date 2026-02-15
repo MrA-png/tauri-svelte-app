@@ -45,7 +45,10 @@
             <br />2. Open <strong>Audio MIDI Setup</strong> app.
             <br />3. Create a <strong>Multi-Output Device</strong> (select your
             speakers + BlackHole).
-            <br />4. Select "BlackHole 2ch" below as input.
+            <br />4. Set Output to Multi-Output Device.
+            <br />5. Set Input to <strong>BlackHole 2ch</strong> in System
+            Settings.
+            <br />6. Select "BlackHole 2ch" below.
         {:else}
             <br />Detecting OS... ({navigator.userAgent})
             <br />Ensure system audio is routed to the selected input device.
