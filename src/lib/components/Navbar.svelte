@@ -8,7 +8,6 @@
     import IconMinimize from "$lib/icons/IconMinimize.svelte";
     import IconX from "$lib/icons/IconX.svelte";
     import IconSettings from "$lib/icons/IconSettings.svelte";
-    import IconTranscript from "$lib/icons/IconTranscript.svelte";
 
     // Props
     let {
@@ -16,7 +15,7 @@
         isTransparent,
         language,
         showSettings,
-        onToggleRecording,
+        onToggleTranscript,
         onToggleTransparency,
         onClearText,
         onToggleSettings,
@@ -28,7 +27,7 @@
         language: string;
         showSettings: boolean;
         showTranscript: boolean;
-        onToggleRecording: () => void;
+        onToggleTranscript: () => void;
         onToggleTransparency: () => void;
         onClearText: () => void;
         onToggleSettings: () => void;
@@ -44,7 +43,8 @@
     }
 </script>
 
-<header data-tauri-dNrag-region class="navbar">
+<header class="navbar">
+    <div class="drag-layer" data-tauri-drag-region></div>
     <div class="logo">
         <IconLogo size={24} class="brand-icon" />
         <span class="brand-name">Transcriber</span>
@@ -64,25 +64,16 @@
 
         <div class="divider"></div>
 
-        <!-- Record Button (Compact) -->
+        <!-- Transcript Window Toggle -->
         <button
-            class="icon-btn record-btn-compact"
-            class:recording={isRecording}
+            class="icon-btn"
             class:active={showTranscript}
-            onclick={onToggleRecording}
-            title={isRecording
-                ? "Stop Recording & Close"
-                : showTranscript
-                  ? "Close Transcript"
-                  : "Start Recording & Show"}
+            onclick={onToggleTranscript}
+            title={showTranscript
+                ? "Close Transcript Window"
+                : "Open Transcript Window"}
         >
-            {#if isRecording}
-                <div class="stop-icon"></div>
-            {:else if showTranscript}
-                <IconTranscript size={18} />
-            {:else}
-                <IconMic size={18} />
-            {/if}
+            <IconMic size={18} />
         </button>
 
         <!-- Transparency Link -->
@@ -142,7 +133,7 @@
         border-bottom: 1px solid rgba(255, 255, 255, 0.08);
         justify-content: space-between;
         flex-shrink: 0;
-        cursor: default;
+        cursor: move;
         position: relative; /* Needed for absolute positioning of drag layer */
         overflow: hidden; /* Ensure drag layer doesn't overflow */
     }
@@ -222,37 +213,6 @@
     .close-btn:hover {
         background: #ef4444;
         color: white;
-    }
-
-    .record-btn-compact {
-        color: #ef4444;
-    }
-    .record-btn-compact:hover {
-        background: rgba(239, 68, 68, 0.1);
-    }
-    .record-btn-compact.recording {
-        color: #ef4444;
-        animation: pulse-text 2s infinite;
-        background: rgba(239, 68, 68, 0.2);
-    }
-
-    .stop-icon {
-        width: 8px;
-        height: 8px;
-        background: currentColor;
-        border-radius: 1px;
-    }
-
-    @keyframes pulse-text {
-        0% {
-            opacity: 1;
-        }
-        50% {
-            opacity: 0.5;
-        }
-        100% {
-            opacity: 1;
-        }
     }
 
     .divider {

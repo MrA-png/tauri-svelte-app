@@ -1,108 +1,61 @@
 <script lang="ts">
     import { onMount, onDestroy } from "svelte";
 
+    import AudioVisualizer from "$lib/components/AudioVisualizer.svelte";
+
     let { availableDevices, selectedDeviceId = $bindable() } = $props<{
         availableDevices: MediaDeviceInfo[];
         selectedDeviceId: string;
     }>();
 
-    let canvas = $state() as HTMLCanvasElement;
-    let audioContext: AudioContext;
-    let analyser: AnalyserNode;
-    let dataArray: Uint8Array;
-    let audioStream: MediaStream;
-    let animationId: number;
+    let isWindows = $state(false);
+    let isMac = $state(false);
 
-    async function startVisualizer(deviceId: string) {
-        try {
-            if (audioStream) stopVisualizer();
-
-            audioStream = await navigator.mediaDevices.getUserMedia({
-                audio: {
-                    deviceId:
-                        deviceId !== "default"
-                            ? { exact: deviceId }
-                            : undefined,
-                },
-            });
-
-            audioContext = new AudioContext();
-            const source = audioContext.createMediaStreamSource(audioStream);
-            analyser = audioContext.createAnalyser();
-            analyser.fftSize = 256;
-            source.connect(analyser);
-
-            const bufferLength = analyser.frequencyBinCount;
-            dataArray = new Uint8Array(bufferLength);
-
-            drawVisualizer();
-        } catch (e) {
-            console.error("Visualizer init error", e);
-        }
-    }
-
-    function stopVisualizer() {
-        if (animationId) cancelAnimationFrame(animationId);
-        if (audioStream) {
-            audioStream.getTracks().forEach((track) => track.stop());
-        }
-        if (audioContext) audioContext.close();
-    }
-
-    function drawVisualizer() {
-        if (!canvas) return;
-        animationId = requestAnimationFrame(drawVisualizer);
-
-        analyser.getByteFrequencyData(dataArray as any);
-
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return;
-
-        const width = canvas.width;
-        const height = canvas.height;
-
-        ctx.clearRect(0, 0, width, height);
-
-        const barWidth = (width / dataArray.length) * 2.5;
-        let x = 0;
-
-        for (let i = 0; i < dataArray.length; i++) {
-            const barHeight = dataArray[i] / 2;
-            ctx.fillStyle = `rgb(${barHeight + 100}, 100, 255)`; // bluish
-            ctx.fillRect(x, height - barHeight, barWidth, barHeight);
-            x += barWidth + 1;
-        }
-    }
-
-    // Effect to restart visualizer when device changes
-    $effect(() => {
-        if (selectedDeviceId) {
-            startVisualizer(selectedDeviceId);
-        }
-        return () => stopVisualizer();
-    });
+    // Derived state for visualizer configuration
+    let selectedDeviceLabel = $derived(
+        availableDevices.find(
+            (d: MediaDeviceInfo) => d.deviceId === selectedDeviceId,
+        )?.label || "",
+    );
+    let isBlackHole = $derived(
+        selectedDeviceLabel.toLowerCase().includes("blackhole"),
+    );
+    let boostGain = $derived(isBlackHole ? 4.0 : 1.0);
 
     onMount(() => {
-        startVisualizer(selectedDeviceId);
-    });
-
-    onDestroy(() => {
-        stopVisualizer();
+        const platform = navigator.userAgent;
+        isWindows = platform.indexOf("Windows") !== -1;
+        isMac = platform.indexOf("Mac") !== -1;
     });
 </script>
 
 <div class="settings-panel">
     <h3>Input Settings</h3>
     <p class="hint">
-        <strong>Important:</strong> To transcribe YouTube/System Audio:
-        <br />1. Enable "Stereo Mix" in Windows Sound Settings.
-        <br />2. Set "Stereo Mix" as the
-        <strong>Default Recording Device</strong>
-        in Windows.
-        <br />3. This app's visualizer below will move when it hears audio.
+        <strong>Setup for System Audio:</strong>
+        {#if isWindows}
+            <br />1. Open <strong>Sound Settings</strong> >
+            <strong>Record</strong>.
+            <br />2. Right-click & enable <strong>"Stereo Mix"</strong>.
+            <br />3. Select "Stereo Mix" below.
+        {:else if isMac}
+            <br />Mac does not have "Stereo Mix" by default.
+            <br />1. Install <strong>BlackHole 2ch</strong>:
+            <br /><code class="code-snippet">brew install blackhole-2ch</code>
+            <br />2. Open <strong>Audio MIDI Setup</strong> app.
+            <br />3. Create a <strong>Multi-Output Device</strong> (select your
+            speakers + BlackHole).
+            <br />4. Set Output to Multi-Output Device.
+            <br />5. Set Input to <strong>BlackHole 2ch</strong> in System
+            Settings.
+            <br />6. Select "BlackHole 2ch" below.
+        {:else}
+            <br />Detecting OS... ({navigator.userAgent})
+            <br />Ensure system audio is routed to the selected input device.
+        {/if}
     </p>
     <select bind:value={selectedDeviceId} class="device-select">
-        <option value="default">Default System Input</option>
+        <option value="default">Default System Input (Mic)</option>
         {#each availableDevices as device}
             <option value={device.deviceId}
                 >{device.label ||
@@ -110,8 +63,45 @@
             >
         {/each}
     </select>
-    <div class="visualizer-container">
-        <canvas bind:this={canvas} width="300" height="50"></canvas>
+
+    <!-- Active device indicator -->
+    <div class="device-status">
+        <span class="status-dot"></span>
+        <span class="status-label">
+            Active: <strong
+                >{selectedDeviceLabel || "Default System Input"}</strong
+            >
+        </span>
+    </div>
+
+    {#if isBlackHole}
+        <!-- Warning: SpeechRecognition mungkin tidak bisa otomatis pakai BlackHole -->
+        <div class="transcription-warning">
+            <div class="warning-icon">⚠️</div>
+            <div class="warning-body">
+                <strong>Penting untuk Transkripsi!</strong><br />
+                Agar teks bisa muncul, pastikan:
+                <br />1. Buka <strong>System Settings → Sound → Input</strong>
+                <br />2. Pilih <strong>BlackHole 2ch</strong> sebagai Default
+                Input
+                <br /><em style="font-size:0.8em; opacity:0.75">
+                    (Visualizer ✅ memakai device ini langsung, tapi mesin
+                    transkripsi butuh System Default Input)
+                </em>
+            </div>
+        </div>
+    {/if}
+
+    <div class="visualizer-wrapper">
+        <p class="visualizer-label">
+            🎙️ Audio Preview (gelombang = audio terdeteksi)
+        </p>
+        <AudioVisualizer
+            deviceId={selectedDeviceId}
+            {boostGain}
+            width={300}
+            height={50}
+        />
     </div>
 </div>
 
@@ -138,6 +128,74 @@
         line-height: 1.4;
     }
 
+    .code-snippet {
+        background: rgba(0, 0, 0, 0.4);
+        padding: 4px 6px;
+        border-radius: 4px;
+        color: #a5b4fc;
+        font-family: monospace;
+        font-size: 0.9em;
+        user-select: text; /* Allow user to copy */
+        display: inline-block;
+        margin: 4px 0;
+    }
+
+    .visualizer-wrapper {
+        margin-top: 5px;
+    }
+
+    .visualizer-label {
+        font-size: 0.78rem;
+        color: rgba(255, 255, 255, 0.5);
+        margin: 0 0 6px 0;
+    }
+
+    .device-status {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-bottom: 10px;
+        font-size: 0.82rem;
+        color: rgba(255, 255, 255, 0.6);
+    }
+
+    .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #22c55e;
+        box-shadow: 0 0 6px #22c55e;
+        display: inline-block;
+        flex-shrink: 0;
+    }
+
+    .status-label strong {
+        color: #a5b4fc;
+    }
+
+    .transcription-warning {
+        display: flex;
+        gap: 8px;
+        background: rgba(234, 179, 8, 0.12);
+        border: 1px solid rgba(234, 179, 8, 0.4);
+        border-radius: 8px;
+        padding: 10px 12px;
+        margin-bottom: 12px;
+        font-size: 0.82rem;
+        color: rgba(255, 255, 255, 0.8);
+        line-height: 1.5;
+    }
+
+    .warning-icon {
+        font-size: 1.2rem;
+        flex-shrink: 0;
+        line-height: 1.4;
+    }
+
+    .warning-body strong {
+        color: #fde68a;
+    }
+
     .device-select {
         width: 100%;
         margin-bottom: 15px;
@@ -160,13 +218,5 @@
         background-color: #1a1a1a;
         color: white;
         padding: 8px;
-    }
-
-    .visualizer-container {
-        width: 100%;
-        background: rgba(0, 0, 0, 0.3);
-        border-radius: 6px;
-        overflow: hidden;
-        height: 50px;
     }
 </style>

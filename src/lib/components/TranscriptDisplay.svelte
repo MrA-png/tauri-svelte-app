@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onMount, onDestroy } from "svelte";
+    import AudioVisualizer from "$lib/components/AudioVisualizer.svelte";
 
     let {
         isRecording,
@@ -8,16 +8,49 @@
         showNoSpeechWarning,
         showSettings,
         topElement,
+        deviceId = "default",
+        boostGain = 1.0,
     } = $props<{
         isRecording: boolean;
         transcriptText: string;
         interimText: string;
         showNoSpeechWarning: boolean;
         showSettings: boolean;
-        topElement?: any; // To allow injecting settings panel
+        topElement?: any;
+        deviceId?: string;
+        boostGain?: number;
     }>();
 
     let scrollContainer = $state() as HTMLDivElement;
+
+    let showAudioInputWarning = $state(false);
+    let audioStartTime = 0;
+
+    function handleAudioDetected() {
+        if (!isRecording) {
+            audioStartTime = 0;
+            return;
+        }
+
+        if (!transcriptText && !interimText) {
+            if (audioStartTime === 0) {
+                audioStartTime = Date.now();
+            } else if (Date.now() - audioStartTime > 4000) {
+                // 4 seconds of audio without transcript
+                if (!showAudioInputWarning) showAudioInputWarning = true;
+            }
+        } else {
+            audioStartTime = 0;
+            showAudioInputWarning = false;
+        }
+    }
+
+    $effect(() => {
+        if (transcriptText || interimText || !isRecording) {
+            showAudioInputWarning = false;
+            audioStartTime = 0;
+        }
+    });
 
     // Auto scroll logic effect
     $effect(() => {
@@ -39,11 +72,30 @@
         <div class="placeholder">
             {#if isRecording}
                 <div class="listening-loader">
-                    <span class="pulse-dot"></span>
+                    <AudioVisualizer
+                        {deviceId}
+                        {boostGain}
+                        width={200}
+                        height={60}
+                        barColor={[99, 102, 241]}
+                        onAudioDetected={handleAudioDetected}
+                    />
                     <p>Listening...</p>
                     {#if showNoSpeechWarning}
                         <p class="warning-text">
                             No speech detected. Check "Stereo Mix" settings.
+                        </p>
+                    {:else if showAudioInputWarning}
+                        <p class="warning-text desc-error">
+                            Sound detected but not transcribed.<br />
+                            1. Ensure <strong>System Input</strong> is set to
+                            <strong
+                                >{deviceId === "default"
+                                    ? "Default"
+                                    : "BlackHole / Selected Device"}</strong
+                            >.<br />
+                            2. Increase <strong>Source Volume</strong> (if using
+                            BlackHole).
                         </p>
                     {/if}
                 </div>
@@ -98,34 +150,19 @@
         color: #6366f1;
     }
 
-    .pulse-dot {
-        width: 12px;
-        height: 12px;
-        background-color: #6366f1;
-        border-radius: 50%;
-        animation: pulse-dot 1.5s infinite ease-in-out;
-    }
-
-    @keyframes pulse-dot {
-        0% {
-            transform: scale(0.8);
-            opacity: 0.5;
-        }
-        50% {
-            transform: scale(1.5);
-            opacity: 1;
-        }
-        100% {
-            transform: scale(0.8);
-            opacity: 0.5;
-        }
-    }
-
     .warning-text {
         color: #ef4444;
         font-size: 0.8rem;
-        margin-top: 4px;
+        margin-top: 6px;
         animation: fade-in 0.5s ease-out;
+        line-height: 1.4;
+    }
+
+    .desc-error {
+        background: rgba(239, 68, 68, 0.1);
+        padding: 8px;
+        border-radius: 6px;
+        border: 1px solid rgba(239, 68, 68, 0.2);
     }
 
     @keyframes fade-in {
