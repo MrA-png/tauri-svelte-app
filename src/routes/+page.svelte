@@ -7,6 +7,7 @@
     import Navbar from "$lib/components/Navbar.svelte";
     import AudioSettings from "$lib/components/AudioSettings.svelte";
     import TranscriptDisplay from "$lib/components/TranscriptDisplay.svelte";
+    import { initLogger } from "$lib/logger";
 
     // ── State ─────────────────────────────────────────────────────────────
     let isTransparent = $state(false);
@@ -216,7 +217,7 @@
             console.log("[Audio] Transcribing blob...");
             // Decode audio blob menggunakan AudioContext
             const arrayBuffer = await blob.arrayBuffer();
-            const audioCtx = new AudioContext({ sampleRate: 16000 });
+            const audioCtx = new AudioContext(); // macOS ignores constructor sampleRate, use native rate
             const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
 
             // Ambil channel pertama (mono) sebagai Float32Array
@@ -224,8 +225,16 @@
             const sampleRate = audioBuffer.sampleRate;
 
             console.log(
-                `[Audio] Decoded audio length: ${float32.length} samples at ${sampleRate}Hz`,
+                `[Audio] Native sample rate from AudioContext: ${sampleRate}Hz`,
             );
+            console.log(
+                `[Audio] Audio length: ${float32.length} samples (~${(float32.length / sampleRate).toFixed(2)}s)`,
+            );
+            if (sampleRate !== 16000) {
+                console.warn(
+                    `[Audio] ⚠️ sampleRate is ${sampleRate}Hz (not 16kHz). Worker will resample.`,
+                );
+            }
 
             audioCtx.close();
 
@@ -319,11 +328,13 @@
 
     async function toggleRecordingState() {
         if (isRecording) {
+            console.log("[Recording] User stopped recording.");
             stopRecording();
             isRecording = false;
             clearTimeout(noSpeechTimeout);
             showNoSpeechWarning = false;
         } else {
+            console.log("[Recording] User started recording.");
             // Pastikan transcript window tampil
             if (!showTranscript) {
                 try {
@@ -332,6 +343,9 @@
                     if (transcriptWin) {
                         await transcriptWin.show();
                         showTranscript = true;
+                        console.log(
+                            "[UI] Transcript window shown automatically.",
+                        );
                     }
                 } catch (e) {
                     console.error("Failed to show transcript window", e);
@@ -371,8 +385,8 @@
     }
 
     function changeLanguage(newLang: string) {
+        console.log(`[UI] Transcription language set to: ${newLang}`);
         language = newLang;
-        // Tidak perlu restart recording — language dipakai saat chunk berikutnya dikirim
     }
 
     function toggleTransparency() {
@@ -391,6 +405,10 @@
             await navigator.mediaDevices.getUserMedia({ audio: true });
             const devices = await navigator.mediaDevices.enumerateDevices();
             availableDevices = devices.filter((d) => d.kind === "audioinput");
+            console.log(
+                `[Audio] ${availableDevices.length} audio input device(s) found:`,
+                availableDevices.map((d) => d.label || d.deviceId),
+            );
         } catch (e: any) {
             console.error(
                 "[Audio Error] Error loading audio devices. Cannot probe microphone list:",
@@ -402,6 +420,9 @@
     // ── Lifecycle ─────────────────────────────────────────────────────────
 
     onMount(async () => {
+        // Inisialisasi logger terlebih dahulu agar semua log masuk ke system.log
+        initLogger();
+
         // Inisialisasi Whisper worker segera (agar model mulai download)
         initWhisperWorker();
 
