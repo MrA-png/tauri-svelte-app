@@ -79,8 +79,15 @@ self.addEventListener('message', async (event: MessageEvent) => {
         // Audio yang masuk mungkin dari sampleRate lain, perlu resample
         let audioData: Float32Array = audio;
 
+        const durationSec = (audio.length / (sampleRate || 16000)).toFixed(2);
+        console.log(`[Worker] Received audio: ${audio.length} samples, sampleRate=${sampleRate}Hz, duration~${durationSec}s`);
+
         if (sampleRate && sampleRate !== 16000) {
+            console.log(`[Worker] Resampling from ${sampleRate}Hz to 16000Hz...`);
             audioData = resampleTo16k(audio, sampleRate);
+            console.log(`[Worker] After resample: ${audioData.length} samples`);
+        } else {
+            console.log('[Worker] Sample rate is 16000Hz, no resampling needed.');
         }
 
         const result = await model(audioData, {
@@ -92,11 +99,15 @@ self.addEventListener('message', async (event: MessageEvent) => {
         });
 
         const text: string = (result.text || '').trim();
+        console.log(`[Worker] Raw transcription result: "${text}"`);
 
         if (text) {
             self.postMessage({ type: 'result', text });
+        } else {
+            console.warn('[Worker] Transcription returned empty text. The audio may be silent or too short.');
         }
     } catch (e: any) {
+        console.error('[Worker] Transcription exception:', e.message);
         self.postMessage({ type: 'error', message: `Transcription error: ${e.message}` });
     }
 });

@@ -2,6 +2,7 @@
     import { onMount, onDestroy } from "svelte";
 
     import AudioVisualizer from "$lib/components/AudioVisualizer.svelte";
+    import { log } from "$lib/logger";
 
     let { availableDevices, selectedDeviceId = $bindable() } = $props<{
         availableDevices: MediaDeviceInfo[];
@@ -54,7 +55,16 @@
             <br />Ensure system audio is routed to the selected input device.
         {/if}
     </p>
-    <select bind:value={selectedDeviceId} class="device-select">
+    <select
+        bind:value={selectedDeviceId}
+        class="device-select"
+        onchange={() => {
+            log(
+                "INFO",
+                `[Settings] Audio input device changed to: ${selectedDeviceLabel || selectedDeviceId}`,
+            );
+        }}
+    >
         <option value="default">Default System Input (Mic)</option>
         {#each availableDevices as device}
             <option value={device.deviceId}

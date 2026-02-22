@@ -8,6 +8,7 @@
     import IconMinimize from "$lib/icons/IconMinimize.svelte";
     import IconX from "$lib/icons/IconX.svelte";
     import IconSettings from "$lib/icons/IconSettings.svelte";
+    import { log } from "$lib/logger";
 
     // Props
     let {
@@ -35,10 +36,12 @@
     }>();
 
     function closeApp() {
+        log("INFO", "[UI] User clicked Close — app closing.");
         getCurrentWindow().close();
     }
 
     function minimizeApp() {
+        log("INFO", "[UI] User clicked Minimize — app minimized.");
         getCurrentWindow().minimize();
     }
 </script>
@@ -55,7 +58,11 @@
         <div class="select-wrapper compact">
             <select
                 value={language}
-                onchange={(e) => onChangeLanguage(e.currentTarget.value)}
+                onchange={(e) => {
+                    const newLang = e.currentTarget.value;
+                    log("INFO", `[UI] Language changed to: ${newLang}`);
+                    onChangeLanguage(newLang);
+                }}
             >
                 <option value="id-ID">ID</option>
                 <option value="en-US">EN</option>
@@ -68,7 +75,13 @@
         <button
             class="icon-btn"
             class:active={showTranscript}
-            onclick={onToggleTranscript}
+            onclick={() => {
+                log(
+                    "INFO",
+                    `[UI] Transcript window toggled — now: ${showTranscript ? "hidden" : "visible"}`,
+                );
+                onToggleTranscript();
+            }}
             title={showTranscript
                 ? "Close Transcript Window"
                 : "Open Transcript Window"}
@@ -80,7 +93,13 @@
         <button
             class="icon-btn"
             class:active={isTransparent}
-            onclick={onToggleTransparency}
+            onclick={() => {
+                log(
+                    "INFO",
+                    `[UI] Transparency toggled — now: ${isTransparent ? "off" : "on"}`,
+                );
+                onToggleTransparency();
+            }}
             title="Toggle Transparency"
         >
             {#if isTransparent}
@@ -91,7 +110,14 @@
         </button>
 
         <!-- Clear Text -->
-        <button class="icon-btn" onclick={onClearText} title="Clear Text">
+        <button
+            class="icon-btn"
+            onclick={() => {
+                log("INFO", "[UI] Clear Text clicked — transcript cleared.");
+                onClearText();
+            }}
+            title="Clear Text"
+        >
             <IconTrash size={18} />
         </button>
 
@@ -100,7 +126,13 @@
         <!-- Device Selector (Simplified) -->
         <button
             class="icon-btn"
-            onclick={onToggleSettings}
+            onclick={() => {
+                log(
+                    "INFO",
+                    `[UI] Audio Settings toggled — now: ${showSettings ? "closed" : "open"}`,
+                );
+                onToggleSettings();
+            }}
             title="Audio Settings"
             class:active={showSettings}
         >
