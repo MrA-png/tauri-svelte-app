@@ -64,7 +64,38 @@
         {/each}
     </select>
 
+    <!-- Active device indicator -->
+    <div class="device-status">
+        <span class="status-dot"></span>
+        <span class="status-label">
+            Active: <strong
+                >{selectedDeviceLabel || "Default System Input"}</strong
+            >
+        </span>
+    </div>
+
+    {#if isBlackHole}
+        <!-- Warning: SpeechRecognition mungkin tidak bisa otomatis pakai BlackHole -->
+        <div class="transcription-warning">
+            <div class="warning-icon">⚠️</div>
+            <div class="warning-body">
+                <strong>Penting untuk Transkripsi!</strong><br />
+                Agar teks bisa muncul, pastikan:
+                <br />1. Buka <strong>System Settings → Sound → Input</strong>
+                <br />2. Pilih <strong>BlackHole 2ch</strong> sebagai Default
+                Input
+                <br /><em style="font-size:0.8em; opacity:0.75">
+                    (Visualizer ✅ memakai device ini langsung, tapi mesin
+                    transkripsi butuh System Default Input)
+                </em>
+            </div>
+        </div>
+    {/if}
+
     <div class="visualizer-wrapper">
+        <p class="visualizer-label">
+            🎙️ Audio Preview (gelombang = audio terdeteksi)
+        </p>
         <AudioVisualizer
             deviceId={selectedDeviceId}
             {boostGain}
@@ -107,6 +138,62 @@
         user-select: text; /* Allow user to copy */
         display: inline-block;
         margin: 4px 0;
+    }
+
+    .visualizer-wrapper {
+        margin-top: 5px;
+    }
+
+    .visualizer-label {
+        font-size: 0.78rem;
+        color: rgba(255, 255, 255, 0.5);
+        margin: 0 0 6px 0;
+    }
+
+    .device-status {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-bottom: 10px;
+        font-size: 0.82rem;
+        color: rgba(255, 255, 255, 0.6);
+    }
+
+    .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #22c55e;
+        box-shadow: 0 0 6px #22c55e;
+        display: inline-block;
+        flex-shrink: 0;
+    }
+
+    .status-label strong {
+        color: #a5b4fc;
+    }
+
+    .transcription-warning {
+        display: flex;
+        gap: 8px;
+        background: rgba(234, 179, 8, 0.12);
+        border: 1px solid rgba(234, 179, 8, 0.4);
+        border-radius: 8px;
+        padding: 10px 12px;
+        margin-bottom: 12px;
+        font-size: 0.82rem;
+        color: rgba(255, 255, 255, 0.8);
+        line-height: 1.5;
+    }
+
+    .warning-icon {
+        font-size: 1.2rem;
+        flex-shrink: 0;
+        line-height: 1.4;
+    }
+
+    .warning-body strong {
+        color: #fde68a;
     }
 
     .device-select {

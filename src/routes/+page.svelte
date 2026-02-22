@@ -6,128 +6,256 @@
     import { emit, listen } from "@tauri-apps/api/event";
     import Navbar from "$lib/components/Navbar.svelte";
     import AudioSettings from "$lib/components/AudioSettings.svelte";
-
     import TranscriptDisplay from "$lib/components/TranscriptDisplay.svelte";
 
-    // State
+    // ── State ─────────────────────────────────────────────────────────────
     let isTransparent = $state(false);
     let isRecording = $state(false);
-    let language = $state("id-ID"); // 'id-ID' or 'en-US'
+    let language = $state("id-ID");
     let transcriptText = $state("");
     let interimText = $state("");
-    let recognition: any; // Type for SpeechRecognition
 
-    // Audio Visualizer State
+    // Audio Visualizer / Device State
     let availableDevices: MediaDeviceInfo[] = $state([]);
     let selectedDeviceId: string = $state("default");
 
     let showSettings = $state(false);
     let showTranscript = $state(false);
-    let noSpeechTimeout: number | undefined;
     let showNoSpeechWarning = $state(false);
+    let noSpeechTimeout: ReturnType<typeof setTimeout> | undefined;
 
-    // Initialize Recognition
-    function setupRecognition() {
-        if (
-            "webkitSpeechRecognition" in window ||
-            "SpeechRecognition" in window
-        ) {
-            const SpeechRecognition =
-                window.SpeechRecognition || window.webkitSpeechRecognition;
-            recognition = new SpeechRecognition();
-            recognition.continuous = true;
-            recognition.interimResults = true;
-            recognition.lang = language;
+    // Whisper / MediaRecorder state
+    let whisperWorker: Worker | null = null;
+    let mediaRecorder: MediaRecorder | null = null;
+    let recordingStream: MediaStream | null = null;
+    let audioChunks: Blob[] = [];
+    let chunkInterval: number | undefined;
 
-            recognition.onresult = (event: any) => {
-                clearTimeout(noSpeechTimeout); // Clear warning timer
-                showNoSpeechWarning = false;
+    // ── Whisper Worker ────────────────────────────────────────────────────
+    function initWhisperWorker() {
+        if (whisperWorker) return;
 
-                let final = "";
-                let interim = "";
-                for (let i = event.resultIndex; i < event.results.length; ++i) {
-                    if (event.results[i].isFinal) {
-                        final += event.results[i][0].transcript + " ";
-                    } else {
-                        interim += event.results[i][0].transcript;
-                    }
-                }
-                transcriptText += final;
-                interimText = interim;
+        whisperWorker = new Worker(
+            new URL("$lib/workers/whisper.worker.ts", import.meta.url),
+            { type: "module" },
+        );
 
-                // Sync with transcript window
-                emitTranscriptUpdate();
-            };
+        whisperWorker.onmessage = (e: MessageEvent) => {
+            const { type, text, progress, message } = e.data;
 
-            recognition.onerror = (event: any) => {
-                clearTimeout(noSpeechTimeout);
-                showNoSpeechWarning = false;
-                console.error("Speech recognition error", event.error);
-                if (event.error === "not-allowed") {
-                    alert(
-                        "Microphone access denied. Please check your settings.",
-                    );
-                    isRecording = false;
+            if (type === "ready") {
+                console.log("[Whisper] Model ready!");
+            } else if (type === "result") {
+                if (text) {
+                    console.log("[Transcript] Success. Text:", text);
+                    clearTimeout(noSpeechTimeout);
+                    showNoSpeechWarning = false;
+
+                    // Tambahkan ke transcript (final)
+                    transcriptText += text + " ";
+                    interimText = "";
                     emitTranscriptUpdate();
-                    adjustWindowSize(); // Ensure size is correct if stopped
-                }
-            };
 
-            recognition.onend = () => {
-                clearTimeout(noSpeechTimeout);
-                if (isRecording) {
-                    // Restart if stopped unexpectedly but state is still recording
-                    // slightly delay to prevent crash loops
-                    setTimeout(() => {
-                        if (isRecording) {
-                            recognition.start();
-                            startNoSpeechTimer();
-                        }
-                    }, 500);
-                } else {
-                    adjustWindowSize();
+                    // Reset no-speech timer
+                    startNoSpeechTimer();
                 }
-            };
-        } else {
-            alert("Web Speech API is not supported in this environment.");
-        }
+            } else if (type === "error") {
+                console.error("[Whisper Worker Error]", message);
+            }
+        };
     }
 
-    onMount(async () => {
-        setupRecognition();
-        await loadAudioDevices();
+    // ── Recording ─────────────────────────────────────────────────────────
+
+    async function startRecording() {
+        stopRecording();
 
         try {
-            // Listen for recording toggle from transcript window
-            await listen("toggle-recording", () => toggleRecordingState());
-            // Listen for transcript window hide event
-            await listen("transcript-hidden", () => {
-                showTranscript = false;
-            });
-        } catch (e) {
-            console.warn(
-                "Tauri event listeners setup failed (non-Tauri environment?):",
-                e,
+            const selectedDevice = availableDevices.find(
+                (d) => d.deviceId === selectedDeviceId,
             );
-        }
-    });
+            const isBlackHole = selectedDevice?.label
+                ?.toLowerCase()
+                .includes("blackhole");
 
-    onDestroy(() => {
-        if (recognition) recognition.stop();
-    });
+            // Ambil stream langsung dari device yang dipilih (BlackHole atau Mic)
+            const constraints: MediaStreamConstraints = {
+                audio: {
+                    deviceId:
+                        selectedDeviceId !== "default"
+                            ? { exact: selectedDeviceId }
+                            : undefined,
+                    echoCancellation: !isBlackHole,
+                    noiseSuppression: !isBlackHole,
+                    autoGainControl: !isBlackHole,
+                    sampleRate: 16000, // Whisper natively expects 16kHz
+                },
+            };
 
-    async function loadAudioDevices() {
-        try {
-            // Request permission first to get labels
-            await navigator.mediaDevices.getUserMedia({ audio: true });
-            const devices = await navigator.mediaDevices.enumerateDevices();
-            availableDevices = devices.filter((d) => d.kind === "audioinput");
-        } catch (e) {
-            console.error("Error loading devices", e);
+            recordingStream =
+                await navigator.mediaDevices.getUserMedia(constraints);
+
+            console.log(
+                "[Audio] Recording started using device:",
+                selectedDevice?.label || "default",
+            );
+            console.log(
+                "[Audio] Stream tracks:",
+                recordingStream.getAudioTracks().length,
+            );
+
+            // Tentukan format yang didukung
+            const mimeType = getSupportedMimeType();
+
+            console.log("[Audio] MediaRecorder using mimeType:", mimeType);
+
+            mediaRecorder = new MediaRecorder(recordingStream, {
+                mimeType,
+                audioBitsPerSecond: 128000,
+            });
+
+            audioChunks = [];
+
+            mediaRecorder.ondataavailable = (e: BlobEvent) => {
+                if (e.data.size > 0) {
+                    console.log(`[Audio] Chunk received: ${e.data.size} bytes`);
+                    audioChunks.push(e.data);
+                }
+            };
+
+            mediaRecorder.onstop = async () => {
+                if (audioChunks.length === 0) {
+                    console.warn(
+                        "[Audio] MediaRecorder stopped but no audio chunks recorded.",
+                    );
+                    return;
+                }
+
+                const blob = new Blob(audioChunks, { type: mimeType });
+                audioChunks = [];
+
+                console.log(
+                    `[Audio] Processing recorded blob, size: ${blob.size} bytes`,
+                );
+
+                // Decode blob ke Float32Array via AudioContext lalu kirim ke worker
+                await transcribeBlob(blob);
+            };
+
+            // Rekam dalam chunks (setiap 4 detik kirim ke Whisper)
+            mediaRecorder.start();
+
+            chunkInterval = setInterval(() => {
+                if (
+                    mediaRecorder &&
+                    mediaRecorder.state === "recording" &&
+                    isRecording
+                ) {
+                    mediaRecorder.stop();
+                    // Restart langsung untuk rekam chunk berikutnya
+                    setTimeout(() => {
+                        if (isRecording && recordingStream) {
+                            audioChunks = [];
+                            mediaRecorder?.start();
+                        }
+                    }, 100);
+                }
+            }, 4000) as unknown as number;
+        } catch (e: any) {
+            console.error(
+                "[Audio Error] Failed to connect to audio device or start recording:",
+                e.message || e,
+            );
+            if (
+                e.name === "NotAllowedError" ||
+                e.name === "PermissionDeniedError"
+            ) {
+                console.warn(
+                    "[Audio Error] Microphone permission was denied by the OS or Browser.",
+                );
+            } else if (
+                e.name === "NotFoundError" ||
+                e.name === "DevicesNotFoundError"
+            ) {
+                console.warn(
+                    "[Audio Error] No recording device was found on the system.",
+                );
+            } else if (
+                e.name === "NotReadableError" ||
+                e.name === "TrackStartError"
+            ) {
+                console.warn(
+                    "[Audio Error] Audio device is already in use by another application.",
+                );
+            }
         }
     }
 
-    // Safe wrapper for Tauri window access
+    function stopRecording() {
+        clearInterval(chunkInterval);
+
+        try {
+            if (mediaRecorder && mediaRecorder.state !== "inactive") {
+                mediaRecorder.stop();
+            }
+        } catch (_) {}
+
+        try {
+            recordingStream?.getTracks().forEach((t) => t.stop());
+        } catch (_) {}
+
+        recordingStream = null;
+        mediaRecorder = null;
+        audioChunks = [];
+    }
+
+    async function transcribeBlob(blob: Blob) {
+        if (!whisperWorker) return;
+
+        try {
+            console.log("[Audio] Transcribing blob...");
+            // Decode audio blob menggunakan AudioContext
+            const arrayBuffer = await blob.arrayBuffer();
+            const audioCtx = new AudioContext({ sampleRate: 16000 });
+            const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+
+            // Ambil channel pertama (mono) sebagai Float32Array
+            const float32 = audioBuffer.getChannelData(0);
+            const sampleRate = audioBuffer.sampleRate;
+
+            console.log(
+                `[Audio] Decoded audio length: ${float32.length} samples at ${sampleRate}Hz`,
+            );
+
+            audioCtx.close();
+
+            // Kirim ke worker untuk ditranskripsi
+            console.log("[Transcript] Sending audio data to Whisper worker");
+            whisperWorker.postMessage(
+                { type: "transcribe", audio: float32, language, sampleRate },
+                [float32.buffer],
+            );
+        } catch (e) {
+            console.error("[Transcribe Error] transcribeBlob error:", e);
+        }
+    }
+
+    function getSupportedMimeType(): string {
+        const candidates = [
+            "audio/webm;codecs=opus",
+            "audio/webm",
+            "audio/ogg;codecs=opus",
+            "audio/ogg",
+            "audio/mp4",
+        ];
+        for (const mime of candidates) {
+            if (MediaRecorder.isTypeSupported(mime)) return mime;
+        }
+        return "";
+    }
+
+    // ── Window / Tauri helpers ────────────────────────────────────────────
+
     function getTauriWindow() {
         try {
             return getCurrentWindow();
@@ -140,7 +268,6 @@
     async function adjustWindowSize() {
         const win = getTauriWindow();
         if (!win) return;
-
         try {
             if (showSettings) {
                 await win.setSize(new LogicalSize(500, 500));
@@ -164,12 +291,11 @@
                 showNoSpeechWarning = true;
                 emitTranscriptUpdate();
             }
-        }, 8000); // 8 seconds without speech
+        }, 10000);
     }
 
     function emitTranscriptUpdate() {
         try {
-            // Calculate boost gain for visual sync
             const selectedDevice = availableDevices.find(
                 (d) => d.deviceId === selectedDeviceId,
             );
@@ -193,18 +319,12 @@
 
     async function toggleRecordingState() {
         if (isRecording) {
-            // Stop logic
-            try {
-                recognition.stop();
-            } catch (e) {
-                console.warn("Error stopping recognition:", e);
-            }
+            stopRecording();
             isRecording = false;
             clearTimeout(noSpeechTimeout);
             showNoSpeechWarning = false;
         } else {
-            // Start logic
-            // Ensure window is shown
+            // Pastikan transcript window tampil
             if (!showTranscript) {
                 try {
                     const transcriptWin =
@@ -218,29 +338,10 @@
                 }
             }
 
-            recognition.lang = language;
-            try {
-                recognition.start();
-                isRecording = true;
-                showNoSpeechWarning = false;
-                startNoSpeechTimer();
-            } catch (e: any) {
-                console.error("Failed to start recognition:", e);
-                // If it's already started (InvalidStateError), we can assume it's recording
-                if (
-                    e.name === "InvalidStateError" ||
-                    e.message?.includes("already started")
-                ) {
-                    isRecording = true;
-                    showNoSpeechWarning = false;
-                    startNoSpeechTimer();
-                    console.log(
-                        "Recognition was already active, synced state.",
-                    );
-                } else {
-                    isRecording = false;
-                }
-            }
+            isRecording = true;
+            showNoSpeechWarning = false;
+            await startRecording();
+            startNoSpeechTimer();
         }
         await adjustWindowSize();
         emitTranscriptUpdate();
@@ -248,12 +349,10 @@
 
     async function handleNavbarToggle() {
         try {
-            // Use getAllWindows to avoid potential static method binding issues with getByLabel
             const windows = await getAllWindows();
             const transcriptWin = windows.find((w) => w.label === "transcript");
 
             if (!transcriptWin) {
-                console.warn("Transcript window not found.");
                 showTranscript = false;
                 return;
             }
@@ -273,12 +372,7 @@
 
     function changeLanguage(newLang: string) {
         language = newLang;
-        if (isRecording) {
-            recognition.stop();
-            recognition.lang = newLang;
-        } else {
-            recognition.lang = newLang;
-        }
+        // Tidak perlu restart recording — language dipakai saat chunk berikutnya dikirim
     }
 
     function toggleTransparency() {
@@ -291,6 +385,43 @@
         emitTranscriptUpdate();
         await adjustWindowSize();
     }
+
+    async function loadAudioDevices() {
+        try {
+            await navigator.mediaDevices.getUserMedia({ audio: true });
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            availableDevices = devices.filter((d) => d.kind === "audioinput");
+        } catch (e: any) {
+            console.error(
+                "[Audio Error] Error loading audio devices. Cannot probe microphone list:",
+                e.message || e,
+            );
+        }
+    }
+
+    // ── Lifecycle ─────────────────────────────────────────────────────────
+
+    onMount(async () => {
+        // Inisialisasi Whisper worker segera (agar model mulai download)
+        initWhisperWorker();
+
+        await loadAudioDevices();
+
+        try {
+            await listen("toggle-recording", () => toggleRecordingState());
+            await listen("transcript-hidden", () => {
+                showTranscript = false;
+            });
+        } catch (e) {
+            console.warn("Tauri event listeners setup failed:", e);
+        }
+    });
+
+    onDestroy(() => {
+        stopRecording();
+        clearTimeout(noSpeechTimeout);
+        whisperWorker?.terminate();
+    });
 </script>
 
 <!-- Main Application Layer (Navbar Only) -->
@@ -320,21 +451,20 @@
 </div>
 
 <style>
-    /* --- Main Layout --- */
     .main-container {
         display: flex;
         flex-direction: column;
         height: 100vh;
-        background-color: transparent !important; /* Forces transparency */
-        padding: 5px; /* Minimal padding */
+        background-color: transparent !important;
+        padding: 5px;
         box-sizing: border-box;
-        overflow: hidden; /* Hide anything outside */
+        overflow: hidden;
     }
 
     .floating-panel {
         background-color: #121212;
         border-radius: 12px;
-        overflow: visible; /* Allow settings dropdown to show */
+        overflow: visible;
         border: 1px solid rgba(255, 255, 255, 0.08);
         transition:
             background-color 0.3s ease,
